@@ -4,3 +4,7 @@ colour_demosaicing
 pillow
 opencv-python
 open3d-python
+seaborn
+pandas
+json
+urllib
