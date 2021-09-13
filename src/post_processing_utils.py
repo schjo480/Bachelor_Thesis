@@ -1,5 +1,3 @@
-from file_utils import *
-from image_utils import *
 from road_detection import *
 
 def overlay_road_on_image(img, dataset):
@@ -18,10 +16,10 @@ def overlay_road_on_image(img, dataset):
     semantic_image = det_line_1lane_init(canny_edge, white_line, yellow_line, dataset)
 
     if dataset=="KITTI":
-        roi_factor_y = 0.5
+        roi_factor_y = 0.45
         roi_factor_x = 0.3
     elif dataset == "Apolloscape_stereo":
-        roi_factor_y = 0.5
+        roi_factor_y = 0.39
         roi_factor_x = 0.3
     elif dataset=="Oxford":
         roi_factor_y = 0.45
