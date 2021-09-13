@@ -17,7 +17,6 @@ from typing import AnyStr
 import ast
 import pickle
 import pandas as pd
-import statsmodels.api as sm
 from scipy.optimize import curve_fit
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
@@ -39,11 +38,11 @@ from matplotlib.ticker import PercentFormatter
 ###################################################################################################################
 
 #Open the calibration file for A2D2
-with open('/Users/joeschmit/Dokumente/TUM/SS21/Bachelorarbeit/Code/cams_lidars.json', 'r') as f:
+with open('../Datasets/A2D2/cams_lidars.json', 'r') as f:
     config = json.load(f)
 
 #Camera models for the Oxford RobotCar Dataset
-camera_models_directory = "/Volumes/Extreme SSD/Bachelorarbeit/Oxford/camera-models"
+camera_models_directory = "../Datasets/Oxford/camera-models"
 
 '''
 Getting filenames
@@ -56,22 +55,22 @@ def get_depth_files(dataset, date=None):
     :return: the filenames providing depth information in an ordered and iterable array
     """
     if dataset=="A2D2":
-        root_path = "/Users/joeschmit/Dokumente/TUM/SS21/Bachelorarbeit/Code/A2D2/camera_lidar_semantic_bboxes"
+        root_path = "../Datasets/A2D2/camera_lidar_semantic_bboxes"
         depth_files = sorted(glob.glob(join(root_path, '*/lidar/cam_front_center/*.npz')))
     elif dataset=="Apolloscape_stereo":
-        root_path = "/Users/joeschmit/Dokumente/TUM/SS21/Bachelorarbeit/Code/Apolloscape"
+        root_path = "../Datasets/Apolloscape"
         depth_files = sorted(glob.glob(join(root_path, '*/disparity/*.png')))
     elif dataset=="Apolloscape_semantic":
-        root_path = "/Users/joeschmit/Dokumente/TUM/SS21/Bachelorarbeit/Code/Apolloscape/road02_depth"
+        root_path = "../Datasets/Apolloscape/road02_depth"
         depth_files = sorted(glob.glob(join(root_path, '*/Camera 5/*.png')))
     elif dataset=="KITTI":
         if date in ["09_26", "09_28", "09_29", "09_30", "10_03"]:
-            root_path = "/Volumes/Extreme SSD/Bachelorarbeit/KITTI/Raw Data/2011_" + date
+            root_path = "/../Datasets/KITTI/Raw Data/2011_" + date
             depth_files = sorted(glob.glob(join(root_path, '*/velodyne_points/data/*.bin')))
         else:
             print("Enter a correct date value!")
     elif dataset=="Oxford":
-        root_path = "/Volumes/Extreme SSD/Bachelorarbeit/Oxford/Lidar"
+        root_path = "../Datasets/Oxford/Lidar"
         depth_files = sorted(glob.glob(join(root_path, '*/ldmrs/*.bin')))
     else:
         print("Enter a correct dataset!")
@@ -79,9 +78,10 @@ def get_depth_files(dataset, date=None):
     return depth_files
 
 
-def extract_image_file_name_from_depth_file_name(file_name_depth, dataset = "A2D2"):
+def extract_image_file_name_from_depth_file_name(file_name_depth, dataset, image_number=None):
     """
 
+    :param image_number: for the evaluation this is the frame number i
     :param file_name_depth: Filename of the file that provides depth information: Lidar files for A2D2, KITTI, and
     Oxford and disparity or depth image for Apolloscape_stereo and Apolloscape_semantic, respectively
     :param dataset: name of the dataset, options: "A2D2", "KITTI", "Apolloscape_stereo", "Apolloscape_semantic, or
@@ -89,60 +89,41 @@ def extract_image_file_name_from_depth_file_name(file_name_depth, dataset = "A2D
     :return: filename of the corresponding RGB image
     """
     if dataset == "A2D2":
-        file_name_image = file_name_depth.split('/')
-        tstamp = file_name_image[10].split('_')[0] + file_name_image[10].split('_')[1]
-        file_name_nbr = file_name_image[-1].split('.')[0]
-        file_name_nbr = file_name_nbr.split('_')[3]
-        file_name_image = '/' + file_name_image[1] + '/' + file_name_image[2] + '/' + file_name_image[3] + '/' + \
-                          file_name_image[4] + '/' + file_name_image[5] + '/' + file_name_image[6] + '/' + \
-                          file_name_image[7] + '/' + file_name_image[8] + '/' + file_name_image[9] + '/' + \
-                          file_name_image[10] + '/camera/cam_front_center/' + tstamp + '_camera_frontcenter_' + \
-                          file_name_nbr + '.png'
-    elif dataset == "KITTI":
-        file_name_image = file_name_depth.split('/')
-        file_name_nbr = file_name_image[-1].split('.')[0]
-        file_name_image = '/' + file_name_image[1] + '/' + file_name_image[2] + '/' + file_name_image[3] + '/' + \
-                          file_name_image[4] + '/' + file_name_image[5] + '/' + file_name_image[6] + '/' + \
-                          file_name_image[7] + '/image_02/data/' + file_name_nbr + '.png'
-    elif dataset == "Apolloscape_stereo":
-        file_name_image = file_name_depth.split('/')
-        file_name_nbr = file_name_image[-1].split('.')[0]
-        file_name_image = '/' + file_name_image[1] + '/' + file_name_image[2] + '/' + file_name_image[3] + '/' + \
-                          file_name_image[4] + '/' + file_name_image[5] + '/' + file_name_image[6] + '/' + \
-                          file_name_image[7] + '/' + file_name_image[8] + '/' + file_name_image[9] + '/camera_5/' \
-                          + file_name_nbr + '.jpg'
-    elif dataset == "Apolloscape_semantic":
-        file_name_image = file_name_depth.split('/')
-        record_nbr = file_name_image[10]
-        file_name_nbr = file_name_image[-1].split('.')[0]
-        file_name_image = '/' + file_name_image[1] + '/' + file_name_image[2] + '/' + file_name_image[3] + '/' + \
-                          file_name_image[4] + '/' + file_name_image[5] + '/' + file_name_image[6] + '/' + \
-                          file_name_image[7] + '/' + file_name_image[8] + '/' + 'road02_seg/ColorImage/' + record_nbr +\
-                          '/' + file_name_image[11] + '/' + file_name_nbr + '.jpg'
-    elif dataset == "Oxford":
-        file_name_image = file_name_depth.split('/')
-        lidar_timestamp = file_name_image[-1].split('.')[0]
-        lidar_timestamp = np.asarray(lidar_timestamp, dtype=np.int64)
-        date = file_name_image[6]
-        camera_timestamp_file = '/' + file_name_image[1] + '/' + file_name_image[2] + '/' + file_name_image[3] + '/' + \
-                          file_name_image[4] + '/Camera/' + date + '/stereo.csv'
-        camera_timestamp_df = pd.read_csv(camera_timestamp_file, header=None)
-        camera_timestamp_df.iloc[:, [0]] = camera_timestamp_df.iloc[:, [0]]
-        camera_timestamp_arr = camera_timestamp_df.to_numpy()
-        camera_timestamp = []
-        for i in range(camera_timestamp_arr.shape[0]):
-            nbr = str(camera_timestamp_arr[i])
-            nbr = nbr.split(' ')
-            nbr = nbr[0]
-            nbr = nbr[2:]
-            camera_timestamp.append(nbr)
+        file_name_image = file_name_depth.replace('lidar', 'camera')
+        file_name_image = file_name_image.replace('camera_camera', 'camera_lidar')
+        file_name_image = file_name_image.replace('npz', 'png')
 
-        camera_timestamp = np.asarray(camera_timestamp, dtype=np.int64)
-        index = (np.abs(camera_timestamp - lidar_timestamp)).argmin()
-        camera_timestamp = camera_timestamp[index]
-        camera_timestamp = str(camera_timestamp)
-        file_name_image = '/' + file_name_image[1] + '/' + file_name_image[2] + '/' + file_name_image[3] + '/' + \
-                          file_name_image[4] + '/Camera/' + date + '/stereo/centre/' + camera_timestamp + '.png'
+    elif dataset == "KITTI":
+        file_name_image = file_name_depth.replace('velodyne_points', 'image_02')
+        file_name_image = file_name_image.replace('bin', 'png')
+
+    elif dataset == "Apolloscape_stereo":
+        file_name_image = file_name_depth.replace('disparity', 'camera_5')
+        file_name_image = file_name_image.replace('png', 'jpg')
+
+    elif dataset == "Apolloscape_semantic":
+        file_name_image = file_name_depth.replace('depth', 'seg')
+        file_name_image = file_name_image.replace('Record', 'ColorImage/Record')
+        file_name_image = file_name_image.replace('png', 'jpg')
+
+    elif dataset == "Oxford":
+        image_directory = file_name_depth.replace('Lidar', 'Camera')
+        image_directory = image_directory.replace('ldmrs', 'stereo/centre')
+        image_directory = image_directory.split('/')
+        image_directory = list(image_directory)[:len(image_directory)-1]
+        image_directory = '/'.join(image_directory)
+
+        timestamps_path = os.path.join(image_directory, os.pardir, os.pardir, 'stereo.csv')
+        if not os.path.isfile(timestamps_path):
+            timestamps_path = os.path.join(image_directory, os.pardir, os.pardir, 'stereo.timestamps')
+
+        timestamp = 0
+        with open(timestamps_path) as timestamps_file:
+            for i, line in enumerate(timestamps_file):
+                if i == image_number:
+                    timestamp = int(line.split(' ')[0])
+
+        file_name_image = os.path.join(image_directory, str(timestamp) + '.png')
 
     return file_name_image
 
@@ -156,43 +137,22 @@ def extract_semantic_file_name_from_file_name_depth(file_name_depth, dataset="A2
     :return: filename of the corresponding semantic image
     """
     if dataset == "A2D2":
-        file_name_semantic_label = file_name_depth.split('/')
-        tstamp = file_name_semantic_label[10].split('_')[0] + file_name_semantic_label[10].split('_')[1]
-        file_name_nbr = file_name_semantic_label[-1].split('.')[0]
-        file_name_nbr = file_name_nbr.split('_')[3]
-        file_name_semantic_label = '/' + file_name_semantic_label[1] + '/' + file_name_semantic_label[2] + '/' + \
-                                   file_name_semantic_label[3] + '/' + \
-                                   file_name_semantic_label[4] + '/' + file_name_semantic_label[5] + '/' + \
-                                   file_name_semantic_label[6] + '/' + \
-                                   file_name_semantic_label[7] + '/' + file_name_semantic_label[8] + '/' + \
-                                   file_name_semantic_label[9] + '/' + \
-                                   file_name_semantic_label[
-                                       10] + '/label/cam_front_center/' + tstamp + '_label_frontcenter_' + \
-                                   file_name_nbr + '.png'
+        file_name_semantic_label = file_name_depth.replace('lidar', 'label')
+        file_name_semantic_label = file_name_semantic_label.replace('camera_label', 'camera_lidar')
+        file_name_semantic_label = file_name_semantic_label.replace('npz', 'png')
+
     elif dataset == "Apolloscape_stereo":
-        file_name_semantic_label = file_name_depth.split('/')
-        tstamp = file_name_semantic_label[-1].split('.')[0]
-        file_name_semantic_label = '/' + file_name_semantic_label[1] + '/' + file_name_semantic_label[2] + '/' + \
-                                   file_name_semantic_label[3] + '/' + file_name_semantic_label[4] + '/' + \
-                                   file_name_semantic_label[5] + '/' + file_name_semantic_label[6] + '/' + \
-                                   file_name_semantic_label[7] + '/' + file_name_semantic_label[8] + '/' + \
-                                   file_name_semantic_label[9] + '/fg_mask/' + tstamp + '.png'
+        file_name_semantic_label = file_name_depth.replace('disparity', 'fg_mask')
+
     elif dataset == "Apolloscape_semantic":
-        file_name_semantic_label = file_name_depth.split('/')
-        record_nbr = file_name_semantic_label[10]
-        tstamp = file_name_semantic_label[-1].split('.')[0]
-        tstamp = tstamp.split('_')
-        tstamp = tstamp[0] + '_' + tstamp[1] + '_' + 'Camera_5_bin'
-        file_name_semantic_label = '/' + file_name_semantic_label[1] + '/' + file_name_semantic_label[2] + '/' + \
-                                   file_name_semantic_label[3] + '/' + file_name_semantic_label[4] + '/' + \
-                                   file_name_semantic_label[5] + '/' + file_name_semantic_label[6] + '/' + \
-                                   file_name_semantic_label[7] + '/' + file_name_semantic_label[8] + \
-                                   '/road02_seg/Label/' + record_nbr + '/Camera 5/' + tstamp + '.png'
+        file_name_semantic_label = file_name_depth.replace('depth', 'seg')
+        file_name_semantic_label = file_name_semantic_label.replace('Record', 'Label/Record')
+        file_name_semantic_label = file_name_semantic_label.replace('.png', '_bin.png')
 
     return file_name_semantic_label
 
 
-def extract_bus_folder_name_from_depth_file_name(file_name_depth, dataset = "A2D2"):
+def extract_bus_folder_name_from_depth_file_name(file_name_depth, dataset):
     """
 
     :param file_name_depth: Filename of the file that provides depth information: Lidar files for A2D2, KITTI, and
@@ -202,28 +162,27 @@ def extract_bus_folder_name_from_depth_file_name(file_name_depth, dataset = "A2D
     :return: filename of the corresponding IMU data
     """
     if dataset == "A2D2":
-        folder_name_bus = file_name_depth.split('/')
-        folder_name_bus_nbr = folder_name_bus[10]
-        folder_name_bus = '/' + folder_name_bus[1] + '/' + folder_name_bus[2] + '/' + folder_name_bus[3] + '/' + \
-                          folder_name_bus[4] + '/' + folder_name_bus[5] + '/' + folder_name_bus[6] + '/' + \
-                          folder_name_bus[7] + '/' + folder_name_bus[8] + '/camera_lidar_semantic_bus/' + \
-                          folder_name_bus_nbr
-    elif dataset == "KITTI":
-        folder_name_bus = file_name_depth.split('/')
-        folder_name_bus_nbr = folder_name_bus[10]
-        folder_name_bus_nbr = folder_name_bus_nbr.split('.')[0]
-        folder_name_bus = '/' + folder_name_bus[1] + '/' + folder_name_bus[2] + '/' + folder_name_bus[3] + '/' + \
-                          folder_name_bus[4] + '/' + folder_name_bus[5] + '/' + folder_name_bus[6] + '/' + \
-                          folder_name_bus[7] + '/oxts/data/' + folder_name_bus_nbr + '.txt'
+        date = str(file_name_depth.split('/')[-1].split('.')[0].split('_')[0])
+        folder_name_bus = file_name_depth.replace('bboxes', 'bus')
+        folder_name_bus = folder_name_bus.replace('lidar/cam_front_center', 'bus')
+        folder_name_bus = folder_name_bus.split('/')
+        folder_name_bus = list(folder_name_bus)[: len(folder_name_bus) - 1]
+        folder_name_bus = '/'.join(folder_name_bus)
+        folder_name_bus = folder_name_bus + '/' + date + '_bus_signals.json'
 
-    elif dataset == "Apolloscape_stereo":
+    elif dataset == "KITTI":
+        folder_name_bus = file_name_depth.replace('velodyne_points', 'oxts')
+        folder_name_bus = folder_name_bus.replace('bin', 'txt')
+
+    elif dataset in ["Apolloscape_stereo", "Apolloscape_semantic"]:
         return
+
     elif dataset == "Oxford":
-        folder_name_bus = file_name_depth.split('/')
-        date = folder_name_bus[6]
-        date = date.split(' ')[0]
-        folder_name_bus = '/' + folder_name_bus[1] + '/' + folder_name_bus[2] + '/' + folder_name_bus[3] + '/' + \
-                          folder_name_bus[4] + '/GPS/' + date + '/gps/ins.csv'
+        folder_name_bus = file_name_depth.replace('Lidar', 'GPS')
+        folder_name_bus = folder_name_bus.replace('ldmrs', 'gps')
+        folder_name_bus = list(folder_name_bus)[: len(folder_name_bus) - 1]
+        folder_name_bus = '/'.join(folder_name_bus)
+        folder_name_bus = folder_name_bus + '/ins.csv'
 
     return folder_name_bus
 
@@ -237,27 +196,29 @@ def extract_gps_folder_name_from_depth_file_name(file_name_depth, dataset="Oxfor
     :return: The name of the folder storing the GPS information for corresponding Oxford frames
     """
     if dataset == "Oxford":
-        folder_name_gps = file_name_depth.split('/')
-        date = folder_name_gps[6]
-        date = date.split(' ')[0]
-        folder_name_gps = '/' + folder_name_gps[1] + '/' + folder_name_gps[2] + '/' + folder_name_gps[3] + '/' + \
-                          folder_name_gps[4] + '/GPS/' + date + '/gps/gps.csv'
+        folder_name_gps = file_name_depth.replace('Lidar', 'GPS')
+        folder_name_gps = folder_name_gps.replace('ldmrs', 'gps')
+        folder_name_gps = list(folder_name_gps)[: len(folder_name_gps) - 1]
+        folder_name_gps = '/'.join(folder_name_gps)
+        folder_name_gps = folder_name_gps + '/gps.csv'
+
         return folder_name_gps
 
 
 def extract_ins_folder_name_from_depth_file_name(file_name_depth, dataset="Oxford"):
     """
 
-    :param file_name_depth: Filename of the file that provides depth information: Lidar files for Oxford
-    :param dataset: "Oxford"
-    :return: The name of the folder storing the INS information for corresponding Oxford frames
-    """
+        :param file_name_depth: Filename of the file that provides depth information: Lidar files for Oxford
+        :param dataset: "Oxford"
+        :return: The name of the folder storing the Visual Odometry information for corresponding Oxford frames
+        """
     if dataset == "Oxford":
-        folder_name_ins = file_name_depth.split('/')
-        date = folder_name_ins[6]
-        date = date.split(' ')[0]
-        folder_name_ins = '/' + folder_name_ins[1] + '/' + folder_name_ins[2] + '/' + folder_name_ins[3] + '/' + \
-                          folder_name_ins[4] + '/GPS/' + date + '/gps/ins.csv'
+        folder_name_ins = file_name_depth.replace('Lidar', 'GPS')
+        folder_name_ins = folder_name_ins.replace('ldmrs', 'gps')
+        folder_name_ins = list(folder_name_ins)[: len(folder_name_ins) - 1]
+        folder_name_ins = '/'.join(folder_name_ins)
+        folder_name_ins = folder_name_ins + '/ins.csv'
+
         return folder_name_ins
 
 
@@ -269,10 +230,12 @@ def extract_vo_folder_name_from_depth_file_name(file_name_depth, dataset="Oxford
     :return: The name of the folder storing the Visual Odometry information for corresponding Oxford frames
     """
     if dataset == "Oxford":
-        folder_name_vo = file_name_depth.split('/')
-        date = folder_name_vo[6]
-        folder_name_vo = '/' + folder_name_vo[1] + '/' + folder_name_vo[2] + '/' + folder_name_vo[3] + '/' + \
-                          folder_name_vo[4] + '/GPS/' + date + '/gps/vo.csv'
+        folder_name_vo = file_name_depth.replace('Lidar', 'GPS')
+        folder_name_vo = folder_name_vo.replace('ldmrs', 'gps')
+        folder_name_vo = list(folder_name_vo)[: len(folder_name_vo) - 1]
+        folder_name_vo = '/'.join(folder_name_vo)
+        folder_name_vo = folder_name_vo + '/vo.csv'
+
         return folder_name_vo
 
 
@@ -354,11 +317,7 @@ def get_meta_parameters(file_name_depth, image_nbr=None, dataset="A2D2"):
     Latitude
     """
     if dataset=="A2D2":
-        file_nbr = file_name_depth.split('/')
-        file_nbr = file_nbr[10].replace('_', '')
-        file_name_image = extract_image_file_name_from_depth_file_name(file_name_depth)
-        bus_data_file = extract_bus_folder_name_from_depth_file_name(file_name_depth, dataset) + '/bus/' + file_nbr + \
-                        '_bus_signals.json'
+        bus_data_file = extract_bus_folder_name_from_depth_file_name(file_name_depth, dataset)
         f = open(bus_data_file)
         bus = json.load(f)
         speed = np.mean(bus[image_nbr]['flexray']['vehicle_speed']['values']) #vehicle speed in km/h
