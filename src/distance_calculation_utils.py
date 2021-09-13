@@ -23,14 +23,15 @@ def calculate_road_distance(semantic_img, depth_img, dataset):
         distance = []
         depth = []
         for i in range(len(u) - 1):
-            z = ((f * baseline) / depth_img[u[i], v[i]])
-            x = (z * u[i])/f
-            y = (z * v[i])/f
-            dist = np.sqrt(z**2 + x**2 + y**2)
-            depth.append(z)
-            distance.append(dist)
-        depth = np.asarray(depth)
-        distance = np.asarray(distance)
+            if depth_img[u[i], v[i]] != 0:
+                z = ((f * baseline) / depth_img[u[i], v[i]])
+                x = (z * u[i])/f
+                y = (z * v[i])/f
+                dist = np.sqrt(z**2 + x**2 + y**2)
+                depth.append(z)
+                distance.append(dist)
+        depth = np.array(depth)
+        distance = np.array(distance)
 
         return depth, distance, road_pixels
 
